@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Trade Demo</title>
+    <meta name="description" content="Terminal Trade Demo with AI market feed, animal neural lab, and paper trading simulations.">
+    <meta property="og:title" content="Terminal Trade Demo">
+    <meta property="og:description" content="Terminal Trade Demo with AI market feed, animal neural lab, and paper trading simulations.">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script src="assets/vendor/lightweight-charts.standalone.production.js" integrity="sha384-2Yiz1jBuc53MdRCA3ojcpk7cAoW2uFfKcetY6JKbqUetb537Hq2uPJrqM1Mj2AKx" crossorigin="anonymous"></script>
+    <script>
+    // Library chart di-vendor lokal (assets/vendor) supaya adblock/DNS yang
+    // memblokir unpkg di desktop tidak lagi membuat chart stuck loading.
+    // Blok ini hanya jalan bila file lokal gagal (404 / corrupt): coba CDN
+    // satu per satu, lalu picu retry lifecycle setelah ada yang berhasil.
+    (function () {
+        if (typeof LightweightCharts !== 'undefined' && LightweightCharts.createChart) return;
+        var urls = [
+            'https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js',
+            'https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js'
+        ];
+        function retryBoot() {
+            try {
+                if (window.ChartLifecycle && typeof window.ChartLifecycle.retryNow === 'function') {
+                    var st = window.ChartLifecycle.getState ? window.ChartLifecycle.getState() : null;
+                    if (!st || st.phase !== 'LIVE') window.ChartLifecycle.retryNow();
+                } else if (typeof changeConfig === 'function' && !window.__MASAKO_CHART_LIVE__) {
+                    changeConfig();
+                }
+            } catch (e) {}
+        }
+        function next(i) {
+            if (i >= urls.length) return;
+            var s = document.createElement('script');
+            s.src = urls[i];
+            s.async = false;
+            // CSP mengizinkan CDN ini secara asal; SRI mem-pinning isi file yang
+            // sama dengan vendor lokal (sha384 diverifikasi tools/verify-cdn-sri.mjs),
+            // supaya CDN yang dikompromi tidak bisa menyuntik JavaScript.
+            s.integrity = 'sha384-2Yiz1jBuc53MdRCA3ojcpk7cAoW2uFfKcetY6JKbqUetb537Hq2uPJrqM1Mj2AKx';
+            s.crossOrigin = 'anonymous';
+            s.onload = function () {
+                try {
+                    if (typeof LightweightCharts !== 'undefined' && LightweightCharts.createChart) retryBoot();
+                    else next(i + 1);
+                } catch (e) { next(i + 1); }
+            };
+            s.onerror = function () { next(i + 1); };
+            document.head.appendChild(s);
+        }
+        next(0);
+    })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4" integrity="sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug" crossorigin="anonymous"></script>
+    
+    <link rel="stylesheet" href="assets/styles/main.css">
+    <link rel="stylesheet" href="assets/styles/wallet-tracker.css">
+
+<style>
+.arb-indicator {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+    font-weight: 600;
+}
+.arb-indicator-new {
+    background: rgba(39, 174, 96, 0.2);
+    color: #2ecc71;
+}
+.arb-indicator-up {
+    background: rgba(46, 204, 113, 0.2);
+    color: #2ecc71;
+}
+.arb-indicator-down {
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+}
+.arb-card-rates-multi {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+</style>
+</head>
+<body>
+    <div id="auth-overlay" class="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <div class="auth-card">
+            <button id="auth-close" class="auth-close" type="button" aria-label="Tutup">×</button>
+            <div class="auth-title" id="auth-title">Login (opsional)</div>
+            <p class="auth-hint">Semua fitur terminal tetap bisa dipakai tanpa login. Login hanya dipakai untuk menyinkronkan posisi demo ke akun kamu.</p>
+
+            <form id="auth-email-form" class="auth-form" autocomplete="on" novalidate>
+                <label class="modal-label" for="auth-email">Email</label>
+                <input type="email" id="auth-email" name="email" autocomplete="email" placeholder="nama@email.com" required>
+
+                <label class="modal-label" for="auth-password">Password</label>
+                <input type="password" id="auth-password" name="password" autocomplete="current-password" placeholder="Minimal 6 karakter" minlength="6" required>
+
+                <div id="auth-message" class="auth-message is-hidden" role="status"></div>
+
+                <button id="auth-submit" class="btn btn-primary w-100" type="submit">Login</button>
+            </form>
+
+            <div class="auth-links">
+                <button id="auth-mode-toggle" class="auth-link" type="button">Belum punya akun? Daftar</button>
+                <button id="auth-forgot" class="auth-link" type="button">Lupa password?</button>
+            </div>
+
+            <div class="auth-divider"><span>atau</span></div>
+            <button id="btn-login-google" class="btn w-100" type="button">Lanjutkan dengan Google</button>
+        </div>
+    </div>
+
+
+    <div class="header">
+        <div class="demo-mode-strip" aria-label="Demo mode disclaimer">
+            <strong class="demo-mode-pill">DEMO MODE</strong>
+            <span>Simulasi edukasi, bukan saran finansial</span>
+            <span>Tidak melakukan order real ke exchange</span>
+            <span>Sinyal AI/indikator tidak menjamin profit</span>
+        </div>
+        <div class="controls">
+            <select id="pair" >
+                <option value="BTCUSDT">BTC/USDT</option>
+                <option value="ETHUSDT">ETH/USDT</option>
+                <option value="SOLUSDT">SOL/USDT</option>
+                <option value="DOGEUSDT">DOGE/USDT</option>
+                <option value="XRPUSDT">XRP/USDT</option>
+                <option value="PEPEUSDT">PEPE/USDT</option>
+                <option value="SHIBUSDT">SHIB/USDT</option>
+                <option value="WIFUSDT">WIF/USDT</option>
+            </select>
+            <select id="tf" >
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m" selected>15m</option>
+                <option value="30m">30m</option>
+                <option value="1h">1H</option>
+                <option value="2h">2H</option>
+                <option value="4h">4H</option>
+                <option value="6h">6H</option>
+                <option value="8h">8H</option>
+                <option value="12h">12H</option>
+                <option value="1d">1D</option>
+                <option value="3d">3D</option>
+                <option value="1w">1W</option>
+                <option value="1M">1B</option>
+                <option value="1y">1Y</option>
+            </select>
+            <button type="button" id="pair-universe-badge" class="pair-universe-badge"
+                    title="LOCAL ARBITRAGE — universe coin dinamis (Top 200 volume futures 24h yang tersedia bersamaan di Binance, OKX, dan Bybit)">
+                LOCAL ARBITRAGE · universe —
+            </button>
+            <button class="btn-icon" id="btn-open-arbitrage" title="Funding Arbitrage Scanner — Strategi (Aggressive / Balanced / Conservative)" aria-label="Buka scanner strategi">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+            </button>
+            <button class="btn-icon" id="btn-open-local-arbitrage" title="Local Arbitrage — universe lokal (Top 200 ∩ 3 exchange)" aria-label="Buka local arbitrage">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+            </button>
+            <button class="btn-icon" id="btn-open-ledger" title="Buka Ledger & Backtest">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"></line>
+                    <line x1="8" y1="12" x2="21" y2="12"></line>
+                    <line x1="8" y1="18" x2="21" y2="18"></line>
+                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+            </button>
+            <button class="btn-icon btn-icon--bandar" id="btn-open-bandar" title="Pergerakan Wallet Bandar — pantau whale BTC (beli/jual)" aria-label="Buka pergerakan wallet bandar">🐋</button>
+            <button id="btn-login-trigger" class="btn">Login</button>
+            <button id="btn-logout" class="btn is-hidden">Logout</button>
+            <button id="btn-open-settings" class="btn-icon is-hidden" type="button" title="Pengaturan akun" aria-label="Buka pengaturan">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="chart-container" id="chart-container">
+            <div id="sys-toast">Inisialisasi Engine...</div>
+            <div id="global-pos-alert">⚠️ Ada Posisi Aktif di Pair Lain</div>
+            <div id="chart-loading" class="chart-loading active" aria-live="polite">
+                <div class="container">
+                    <div class="dash uno"></div>
+                    <div class="dash dos"></div>
+                    <div class="dash tres"></div>
+                    <div class="dash cuatro"></div>
+                </div>
+                <div class="chart-loading-text" id="chart-loading-text">Memuat chart...</div>
+                <button id="chart-retry" class="chart-retry-btn is-hidden" type="button">Coba Lagi</button>
+            </div>
+            <div id="main-chart"></div>
+            <div id="rsi-chart"></div>
+            <button id="chart-jump-right" class="chart-jump-right"  title="Kembali ke candle terbaru"><span aria-hidden="true">→</span></button>
+        </div>
+
+        <div class="side-panel">
+            
+            <div class="card">
+                <div class="card-title">Intelligence Pipeline</div>
+                <div class="flex-between-end">
+                    <div>
+                        <div id="signal" class="value-large signal-hold">WAIT</div>
+                        <div class="price-text" id="price">0.0000</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="micro-label">CONFIDENCE</div>
+                        <div id="confidence" class="value-large confidence-value">0%</div>
+                    </div>
+                </div>
+                <div class="ai-badges" id="dynamic-badges">
+                    <span class="badge" id="badge-regime">Analysing</span>
+                    <span class="badge" id="badge-vol">Vol: -</span>
+                    <span class="badge" id="badge-risk">Risk: -</span>
+                    <span class="badge" id="badge-source">Feed: -</span>
+                    <span class="badge" id="badge-latency">0ms</span>
+                    <span class="badge" id="badge-history" title="Jumlah candle historis yang tersedia untuk engine">History: 0</span>
+                    <span class="badge" id="badge-liq">Liq: -</span>
+                </div>
+                <div id="reasoning" class="reasoning-text">
+                    Menunggu aliran data market...
+                </div>
+                <div class="moon-signal-note" aria-label="Keterangan indikator moon">
+                    <span>🌙 Long di bawah candle</span>
+                    <span>🌙 Short di atas candle</span>
+                    <span class="moon-signal-filter">AI terkonfirmasi · maks. 2 sinyal</span>
+                </div>
+                <div class="score-bar-container is-hidden" id="score-bar">
+                    <div class="score-bar-segment score-bar-trend" id="sb-trend"></div>
+                    <div class="score-bar-segment score-bar-liq" id="sb-liq"></div>
+                    <div class="score-bar-segment score-bar-whale" id="sb-whale"></div>
+                </div>
+            </div>
+
+            <div class="card neural-lab" id="neural-lab">
+                <div class="card-title">Animal Neural Lab <span class="neural-status" id="neural-status">INIT</span></div>
+                <div class="neural-meta">
+                    <div class="row-between"><span class="label-muted">Meta Decision</span><span id="neural-meta-decision" class="neural-decision">—</span></div>
+                    <div class="row-between"><span class="label-muted">Confidence</span><span id="neural-meta-conf" class="value-strong">—</span></div>
+                    <div class="row-between"><span class="label-muted">Consensus</span><span id="neural-meta-cons" class="value-strong">—</span></div>
+                    <div class="row-between"><span class="label-muted">Risk</span><span id="neural-meta-risk" class="value-strong">—</span></div>
+                    <div class="row-between no-border"><span class="label-muted">Risk Gate</span><span id="neural-meta-gate" class="neural-gate">—</span></div>
+                </div>
+                <div class="neural-canvas-wrap">
+                    <canvas id="neural-canvas" class="neural-canvas" role="img" aria-label="Peta aktivitas 8 otak hewan beserta arah dan tingkat keyakinannya"></canvas>
+                    <div class="neural-canvas-legend">
+                        <span class="neural-legend-item"><span class="neural-legend-glyph">▲</span>LONG</span>
+                        <span class="neural-legend-item"><span class="neural-legend-glyph">▼</span>SHORT</span>
+                        <span class="neural-legend-item"><span class="neural-legend-glyph">●</span>NETRAL</span>
+                        <span class="neural-legend-item"><span class="neural-legend-bar"></span>Bar = aktivitas · garis = confidence</span>
+                    </div>
+                </div>
+                <div class="neural-agents" id="neural-agents"></div>
+                <div class="neural-patterns" id="neural-patterns">
+                    <div class="neural-patterns-head">
+                        <span class="neural-patterns-title">Pola Ditemukan (data luas)</span>
+                        <span class="neural-patterns-source" id="neural-pattern-source">Data pola: belum dimuat</span>
+                    </div>
+                    <div class="neural-pattern-list" id="neural-pattern-list"></div>
+                </div>
+                <div class="neural-activity" id="neural-activity" aria-live="polite"></div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-title">Binance Orderflow & Sentiment</div>
+                    <div class="row-between"><span class="label-muted">Ret/Smart</span><span id="rs-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">Fund/OI</span><span id="fo-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">Conflict</span><span id="cf-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">L.S Vol (Taker)</span><span id="taker-val" class="value-strong">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">Basis</span><span id="oi-basis-val" class="value-strong">-</span></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Trend Structure</div>
+                    <div class="row-between"><span class="label-muted">SuperTrend</span><span id="st-status" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">MACD (12,26)</span><span id="macd-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">StochRSI</span><span id="stoch-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">RSI 14/21</span><span id="rsi-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">vs EMA200</span><span id="vwap-status" class="value-strong">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">Williams %R</span><span id="wr-val" class="value-strong">-</span></div>
+                </div>
+            </div>
+            
+            <div class="grid-2 u-mt-2">
+                <div class="card">
+                    <div class="card-title">Binance Liquidity Data</div>
+                    <div class="row-between"><span class="label-muted">L.S Accounts</span><span id="ls-acc-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">L.S Ratio</span><span id="ls-ratio-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">L.S Positions</span><span id="ls-pos-val" class="value-strong">-</span></div>
+                    <div class="row-between"><span class="label-muted">Buy/Sell Vol</span><span id="bs-vol-val" class="value-strong">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">Dominance L/S</span><span id="dom-ls-val" class="value-strong">-</span></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Trend Context</div>
+                    <div class="row-between"><span class="label-muted">Trend 1 Hari</span><span id="mtf-1d">-</span></div>
+                    <div class="row-between"><span class="label-muted">Trend 1 Jam</span><span id="mtf-1h">-</span></div>
+                    <div class="row-between"><span class="label-muted">Trend 15 Menit</span><span id="mtf-15m">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">Volume Trend</span><span id="vol-trend-val" class="value-strong">-</span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title warning-title">Golden Ratio Metrics (8, 13, 21, 55)</div>
+                <div class="grid-2 compact-grid">
+                    <div class="row-between no-border"><span class="label-muted">CVD / OBV</span><span id="cvd-obv-val" class="value-strong">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">MFI / VolOsc</span><span id="mfi-volosc-val" class="value-strong">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">BB (21, 1.6)</span><span id="bb-val" class="value-strong">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">Ichi (8,21)</span><span id="ichi-val" class="value-strong">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">POC / PSAR</span><span id="poc-psar-val" class="value-strong">-</span></div>
+                    <div class="row-between no-border"><span class="label-muted">LinReg (21)</span><span id="linreg-val" class="value-strong">-</span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Polymarket</div>
+                <div class="btn-group u-mt-2">
+                    <button class="btn btn-secondary" id="btn-poly-5">Predict 5M</button>
+                    <button class="btn btn-secondary" id="btn-poly-15">Predict 15M</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title primary-title">Futures Execution</div>
+                <div class="demo-risk-note"><strong>DEMO MODE:</strong> simulasi edukasi; bukan saran finansial, tidak mengirim order real ke exchange, dan sinyal AI/indikator tidak menjamin profit.</div>
+                <div class="row-between no-border flush-row u-mb-8">
+                    <span class="label-muted label-semibold">Saldo Demo</span>
+                    <div class="inline-flex-center">
+                        <span id="demo-balance" class="balance-value">$0.00</span>
+                        <button id="btn-custom-balance" class="icon-ghost-btn">⚙️</button>
+                    </div>
+                </div>
+                <div class="demo-live-row is-hidden" id="demo-live-row" aria-live="off">
+                    <span>Wallet <span id="demo-wallet">$0.00</span></span>
+                    <span>PNL Floating <span id="demo-upnl">$0.00</span></span>
+                </div>
+                <div class="filter-tabs u-mb-8">
+                    <button class="tab-btn active" id="tab-manual" >Manual</button>
+                    <button class="tab-btn" id="tab-ai" >AI Auto</button>
+                </div>
+                <div id="ai-controls" class="is-hidden">
+                    <div class="ai-mode-toggle">
+                        <div class="ai-mode-btn active-cons" id="mode-cons" >KONSERVATIF</div>
+                        <div class="ai-mode-btn" id="mode-agg" >AGRESIF</div>
+                    </div>
+                    <div class="ai-mode-desc" id="ai-mode-desc">
+                        Delay Filter ON. Sabar menunggu konfirmasi ekstra.
+                    </div>
+                </div>
+
+                <!-- Exchange selection for hedging -->
+                <div class="u-mb-6">
+                    <label class="modal-label" for="trade-exchange">Exchange</label>
+                    <select id="trade-exchange">
+                        <option value="Binance">Binance</option>
+                        <option value="OKX">OKX</option>
+                        <option value="Bybit">Bybit</option>
+                    </select>
+                </div>
+                <div class="row-between no-border u-mb-6" id="funding-rate-row">
+                    <span class="label-muted">Funding Rate (8H)</span>
+                    <span id="trade-funding-rate" class="value-strong">—</span>
+                </div>
+
+                <div class="grid-2 u-mb-8">
+                    <select id="margin-mode">
+                        <option value="CROSS">Cross</option>
+                        <option value="ISOLATED" selected>Isolated</option>
+                    </select>
+                    <div class="leverage-control">
+                        <span class="leverage-label">
+                            <input type="number" id="lev-val-input" class="value-strong text-primary lev-input-override" value="25" min="1" max="125" step="1" inputmode="numeric" aria-label="Leverage">
+                            <span class="leverage-suffix" aria-hidden="true">x</span>
+                        </span>
+                        <input type="range" id="leverage-slider" min="1" max="125" value="25" aria-label="Leverage slider">
+                    </div>
+                </div>
+                <div class="u-mb-6">
+                    <input type="number" id="trade-amount" placeholder="Margin Awal (USDT)" value="100">
+                </div>
+
+                <!-- Quick capital presets -->
+                <div class="capital-presets u-mb-8" id="capital-presets">
+                    <button type="button" class="capital-preset" data-capital="10">10</button>
+                    <button type="button" class="capital-preset" data-capital="50">50</button>
+                    <button type="button" class="capital-preset active" data-capital="100">100</button>
+                    <button type="button" class="capital-preset" data-capital="500">500</button>
+                    <button type="button" class="capital-preset" data-capital="1000">1K</button>
+                    <button type="button" class="capital-preset" data-capital="5000">5K</button>
+                    <button type="button" class="capital-preset" data-capital="10000">10K</button>
+                </div>
+
+                <div class="grid-2 u-mb-8">
+                    <input type="number" id="ts-activation" placeholder="TS Act Price (Opt)">
+                    <input type="number" id="ts-callback" placeholder="TS Callback % (e.g. 1)">
+                </div>
+
+                <div class="grid-4 u-mb-8" id="manual-tpsl-box">
+                    <input type="number" id="tp-price" placeholder="TP">
+                    <select id="tp-pct-sel" >
+                        <option value="">TP %</option>
+                        <option value="5">5%</option>
+                        <option value="10">10%</option>
+                        <option value="15">15%</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <input type="number" id="tp-pct-custom" class="is-hidden" placeholder="%+ 1-100">
+
+                    <input type="number" id="sl-price" placeholder="SL">
+                    <select id="sl-pct-sel" >
+                        <option value="">SL %</option>
+                        <option value="5">5%</option>
+                        <option value="10">10%</option>
+                        <option value="15">15%</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <input type="number" id="sl-pct-custom" class="is-hidden" placeholder="%- 50">
+                </div>
+                <div id="manual-auto-rr-box">
+                    <label class="checkbox-container u-mb-6">
+                        <input type="checkbox" id="auto-rr-manual">
+                        <span class="text-warning value-strong">Automatic TP/SL</span> (Abaikan input manual)
+                    </label>
+                </div>
+                <label class="checkbox-container u-mb-6">
+                    <input type="checkbox" id="use-trailing" checked>
+                    <span>Automatic Smart Trailing Stop (Based on ATR)</span>
+                </label>
+                <label class="checkbox-container u-mb-8">
+                    <input type="checkbox" id="use-be" checked>
+                    <span>Automatic SL+ (Pindah SL ke Entry saat rasio risiko/imbal hasil simulasi > 1:1)</span>
+                </label>
+                <label class="checkbox-container u-mb-12">
+                    <input type="checkbox" id="use-hedge-ts">
+                    <span>Automatic Hedging Trailing Stop (Cross Long/Short)</span>
+                </label>
+                <div id="futures-manual-btns" class="btn-group u-mt-0">
+                    <button class="btn btn-success" id="btn-long-sim">Long</button>
+                    <button class="btn btn-danger" id="btn-short-sim">Short</button>
+                </div>
+                <div id="futures-ai-btn" class="is-hidden">
+                    <button class="btn btn-primary w-100" id="btn-ai-execute-sim">AI EXECUTE (Simulasi)</button>
+                </div>
+            </div>
+            <div id="positions-wrapper"></div>
+        </div>
+
+            <!-- Wallet Tracker (Smart Money): discovery + rekomendasi + copy trade demo -->
+            <div class="card" id="wallet-tracker-card">
+                <div class="card-title">Wallet Tracker <span class="badge">Smart Money</span></div>
+                <div class="demo-risk-note"><strong>DEMO:</strong> data wallet publik Hyperliquid (read-only). Copy trade hanya membuka posisi <strong>simulasi</strong> di terminal ini — tidak ada order real, tidak perlu private key.</div>
+                <div class="filter-tabs u-mb-8" id="wt-tabs">
+                    <button class="tab-btn active" data-wt-tab="reco">Rekomendasi</button>
+                    <button class="tab-btn" data-wt-tab="leaderboard">🏆 Leaderboard All</button>
+                    <button class="tab-btn" data-wt-tab="search">Cari Wallet</button>
+                    <button class="tab-btn" data-wt-tab="copy">Copy Saya <span id="wt-copy-count"></span></button>
+                </div>
+                <div id="wt-pane-reco">
+                    <div class="filter-tabs u-mb-8" id="wt-windows"></div>
+                    <div id="wt-reco-list"></div>
+                </div>
+                <div id="wt-pane-leaderboard" class="is-hidden">
+                    <div class="filter-tabs u-mb-8" id="wt-lb-windows"></div>
+                    <div id="wt-lb-filters" class="u-mb-8"></div>
+                    <div id="wt-lb-list"></div>
+                </div>
+                <div id="wt-pane-search" class="is-hidden">
+                    <div class="u-mb-8">
+                        <label class="modal-label" for="wt-addr-input">Alamat wallet (0x…)</label>
+                        <input type="text" id="wt-addr-input" class="input-text" placeholder="0x…" spellcheck="false" autocomplete="off">
+                    </div>
+                    <button class="btn btn-primary w-100 u-mb-8" id="wt-addr-go">Lihat Wallet</button>
+                    <div id="wt-search-history" class="u-mb-8"></div>
+                    <div id="wt-search-result"></div>
+                </div>
+                <div id="wt-pane-copy" class="is-hidden">
+                    <div id="wt-copy-list"></div>
+                </div>
+                <div id="wt-detail" class="is-hidden"></div>
+            </div>
+    </div>
+
+    <!-- Modal 1: Funding Arbitrage Scanner — Strategi (Aggressive/Balanced/Conservative, universe ALL) -->
+    <div id="arbitrage-modal" class="modal-overlay arb-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="arb-title">
+        <div class="modal-content arb-modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="arb-title">Funding Arbitrage Scanner — Strategi</h2>
+                <button class="close-btn" id="btn-close-arbitrage" aria-label="Tutup Scanner">&times;</button>
+            </div>
+            <div class="modal-body arb-modal-body">
+                <div class="arb-mode-note">Mode strategi: <strong>Aggressive / Balanced / Conservative</strong> · universe <strong>ALL</strong> (semua coin funding ≥2 venue, tiap kartu ada tombol Buka Chart).
+                    <button type="button" id="btn-goto-local" class="arb-universe-btn">Buka Local Arbitrage →</button>
+                </div>
+                <div class="filter-tabs u-mb-8 arb-filter-tabs">
+                    <input type="text" id="arb-search" placeholder="Search Coin..." class="input-text arb-input-search" />
+
+                    <label class="arb-label-min">Mode:</label>
+                    <select id="arb-filter-mode" class="arb-input-min">
+                        <option value="Aggressive">Aggressive</option>
+                        <option value="Balanced">Balanced</option>
+                        <option value="Conservative">Conservative</option>
+                    </select>
+
+                    <label class="arb-label-min">Show:</label>
+                    <select id="arb-show-limit" class="arb-input-min">
+                        <option value="50">Top 50</option>
+                        <option value="100">Top 100</option>
+                        <option value="200">Top 200</option>
+                        <option value="all">All</option>
+                    </select>
+
+                    <label class="arb-label-min">Interval:</label>
+                    <select id="arb-interval-preset" class="arb-input-min">
+                        <option value="1H">1 Hour</option>
+                        <option value="4H">4 Hours</option>
+                        <option value="8H">8 Hours</option>
+                    </select>
+
+                    <label class="arb-label-min" for="arb-leverage" title="Leverage tiap leg. Dipakai menghitung modal (margin 2 leg) sebagai dasar ROI.">Lev/leg:</label>
+                    <select id="arb-leverage" class="arb-input-min" title="Leverage tiap leg. Dipakai menghitung modal (margin 2 leg) sebagai dasar ROI.">
+                        <option value="1">1x</option>
+                        <option value="2">2x</option>
+                        <option value="3" selected>3x</option>
+                        <option value="5">5x</option>
+                        <option value="10">10x</option>
+                    </select>
+
+                    <div class="arb-status-container">
+                        <span id="arb-countdown" class="arb-countdown">Next: --:--:--</span>
+                        <span id="arb-status-badge" class="badge">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="arb-size-row">
+                    <label class="arb-label-min" for="arb-pos-size">Pos Size (USDT):</label>
+                    <input type="number" id="arb-pos-size" class="arb-input-pos" value="1000"
+                           min="10" max="100000000" step="any" inputmode="decimal"
+                           aria-describedby="arb-pos-hint" />
+                    <div class="arb-size-presets" id="arb-size-presets" role="group" aria-label="Preset ukuran posisi (USDT)">
+                        <button type="button" class="arb-size-preset" data-arb-size="10">10</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="50">50</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="100">100</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="500">500</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="1000">1K</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="5000">5K</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="10000">10K</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="100000">100K</button>
+                    </div>
+                    <span id="arb-pos-hint" class="arb-pos-hint">Bebas diisi (min $10) — profit, fee &amp; ROI langsung menyesuaikan.</span>
+                </div>
+
+                <div class="arb-sources-row">
+                    <span class="arb-sources-label">Exchange (Binance · OKX · Bybit):</span>
+                    <div id="arb-sources" class="arb-sources"></div>
+                    <span id="arb-demo-flag" class="arb-demo-flag" hidden>Data simulasi</span>
+                </div>
+
+                <div class="arb-recommendations" id="arb-recommendations" aria-live="polite">
+                    <!-- Top 3 rekomendasi harian (JS) -->
+                </div>
+
+                <div class="arb-cards-container" id="arb-cards-container">
+                    <!-- Populated by JS -->
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: Local Arbitrage — universe lokal dinamis (Top N ∩ 3 exchange) -->
+    <div id="local-arbitrage-modal" class="modal-overlay arb-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="local-arb-title">
+        <div class="modal-content arb-modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="local-arb-title">Local Arbitrage — Universe Lokal</h2>
+                <button class="close-btn" id="btn-close-local-arbitrage" aria-label="Tutup Local Arbitrage">&times;</button>
+            </div>
+            <div class="modal-body arb-modal-body">
+                <div class="arb-mode-note">Mode lokal: hanya coin hasil <strong>dynamic intersection</strong> Top N volume futures 24h ∩ Binance·OKX·Bybit. Tiap kartu ada tombol Buka Chart.
+                    <button type="button" id="btn-goto-strategy" class="arb-universe-btn">← Buka Scanner Strategi</button>
+                </div>
+                <div class="filter-tabs u-mb-8 arb-filter-tabs">
+                    <input type="text" id="local-search" placeholder="Search Coin..." class="input-text arb-input-search" />
+
+                    <label class="arb-label-min">Mode:</label>
+                    <select id="local-filter-mode" class="arb-input-min">
+                        <option value="Aggressive">Aggressive</option>
+                        <option value="Balanced">Balanced</option>
+                        <option value="Conservative">Conservative</option>
+                    </select>
+
+                    <label class="arb-label-min">Show:</label>
+                    <select id="local-show-limit" class="arb-input-min">
+                        <option value="50">Top 50</option>
+                        <option value="100">Top 100</option>
+                        <option value="200">Top 200</option>
+                        <option value="all" selected>All</option>
+                    </select>
+
+                    <label class="arb-label-min">Interval:</label>
+                    <select id="local-interval-preset" class="arb-input-min">
+                        <option value="1H">1 Hour</option>
+                        <option value="4H">4 Hours</option>
+                        <option value="8H">8 Hours</option>
+                    </select>
+
+                    <label class="arb-label-min" for="local-leverage" title="Leverage tiap leg. Dipakai menghitung modal (margin 2 leg) sebagai dasar ROI.">Lev/leg:</label>
+                    <select id="local-leverage" class="arb-input-min" title="Leverage tiap leg. Dipakai menghitung modal (margin 2 leg) sebagai dasar ROI.">
+                        <option value="1">1x</option>
+                        <option value="2">2x</option>
+                        <option value="3" selected>3x</option>
+                        <option value="5">5x</option>
+                        <option value="10">10x</option>
+                    </select>
+
+                    <div class="arb-status-container">
+                        <span id="local-countdown" class="arb-countdown">Next: --:--:--</span>
+                        <span id="local-status-badge" class="badge">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="arb-size-row">
+                    <label class="arb-label-min" for="local-pos-size">Pos Size (USDT):</label>
+                    <input type="number" id="local-pos-size" class="arb-input-pos" value="1000"
+                           min="10" max="100000000" step="any" inputmode="decimal"
+                           aria-describedby="local-pos-hint" />
+                    <div class="arb-size-presets" id="local-size-presets" role="group" aria-label="Preset ukuran posisi lokal (USDT)">
+                        <button type="button" class="arb-size-preset" data-arb-size="10">10</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="50">50</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="100">100</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="500">500</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="1000">1K</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="5000">5K</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="10000">10K</button>
+                        <button type="button" class="arb-size-preset" data-arb-size="100000">100K</button>
+                    </div>
+                    <span id="local-pos-hint" class="arb-pos-hint">Bebas diisi (min $10) — profit, fee &amp; ROI langsung menyesuaikan.</span>
+                </div>
+
+                <div class="arb-sources-row">
+                    <span class="arb-sources-label">Exchange (Binance · OKX · Bybit):</span>
+                    <div id="local-sources" class="arb-sources"></div>
+                    <span id="local-demo-flag" class="arb-demo-flag" hidden>Data simulasi</span>
+                </div>
+
+                <div class="arb-recommendations" id="local-recommendations" aria-live="polite">
+                    <!-- Top 3 rekomendasi harian lokal (JS) -->
+                </div>
+
+                <div class="arb-universe-row">
+                    <label class="arb-label-min" for="arb-universe-mode">Universe:</label>
+                    <select id="arb-universe-mode" class="arb-input-min">
+                        <option value="LOCAL">LOCAL ARBITRAGE (Top 200 &#8745; 3 exchange)</option>
+                        <option value="ALL">ALL (semua coin funding)</option>
+                    </select>
+
+                    <label class="arb-label-min" for="arb-universe-top">Top N:</label>
+                    <select id="arb-universe-top" class="arb-input-min">
+                        <option value="100">Top 100</option>
+                        <option value="200" selected>Top 200</option>
+                        <option value="300">Top 300</option>
+                    </select>
+
+                    <label class="arb-label-min" for="arb-universe-min-vol">Min Vol 24h:</label>
+                    <select id="arb-universe-min-vol" class="arb-input-min">
+                        <option value="1000000">$1M</option>
+                        <option value="5000000" selected>$5M</option>
+                        <option value="10000000">$10M</option>
+                        <option value="25000000">$25M</option>
+                    </select>
+
+                    <label class="arb-label-min" for="arb-universe-max-spread">Max Spread:</label>
+                    <select id="arb-universe-max-spread" class="arb-input-min">
+                        <option value="20">20 bps</option>
+                        <option value="50" selected>50 bps</option>
+                        <option value="100">100 bps</option>
+                    </select>
+
+                    <button type="button" id="arb-universe-refresh" class="arb-universe-btn">Refresh universe</button>
+                </div>
+
+                <div class="arb-universe-panel" id="arb-universe-panel">
+                    <div class="arb-universe-summary" id="arb-universe-summary">LOCAL ARBITRAGE — memuat universe...</div>
+                    <div class="arb-universe-funnel" id="arb-universe-funnel"></div>
+                    <div class="arb-universe-warning" id="arb-universe-warning" hidden></div>
+                    <button type="button" id="arb-universe-toggle" class="arb-universe-btn" hidden>Tampilkan daftar coin</button>
+                    <div class="arb-universe-coins" id="arb-universe-coins" hidden></div>
+                </div>
+
+                <div class="arb-cards-container" id="local-cards-container">
+                    <!-- Populated by JS -->
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="history-modal" >
+        <div class="modal-content" >
+            <div class="modal-header">
+                <h2 class="modal-title-ledger">
+                    Trading Ledger (<span id="ledger-pair-title">BTCUSDT</span>)
+                </h2>
+                <button class="close-btn" id="btn-close-history">&times;</button>
+            </div>
+            <div class="modal-body">
+                <section class="active-pos-section" id="active-pos-section" aria-labelledby="active-pos-title">
+                    <div class="active-pos-header">
+                        <div>
+                            <div class="mini-title" id="active-pos-title">Posisi Aktif</div>
+                            <div class="active-pos-summary">
+                                <span id="active-pos-total">0 posisi · 0 koin</span>
+                                <span id="active-pos-total-pnl" class="active-pos-total-pnl"></span>
+                            </div>
+                        </div>
+                        <button type="button" class="active-pos-btn active-pos-btn-danger is-hidden" id="btn-close-all-coins" data-active-pos-action="close-all-coins">Close Semua Koin</button>
+                    </div>
+                    <div class="wt-ledger-copy-section is-hidden" id="wt-ledger-copy-section"></div>
+                    <div class="active-pos-list" id="active-pos-list"></div>
+                </section>
+                <div class="mini-metric-panel">
+                    <div class="mini-metric-box">
+                        <div class="mini-title">Polymarket WR</div>
+                        <div class="mini-flex">
+                            <span>1D:<span class="mini-val" id="poly-wr-d">0%</span></span>
+                            <span>7D:<span class="mini-val" id="poly-wr-w">0%</span></span>
+                            <span>30D:<span class="mini-val" id="poly-wr-m">0%</span></span>
+                        </div>
+                    </div>
+                    <div class="mini-metric-box">
+                        <div class="mini-title">Futures WR</div>
+                        <div class="mini-flex">
+                            <span>1D:<span class="mini-val" id="fut-wr-d">0%</span></span>
+                            <span>7D:<span class="mini-val" id="fut-wr-w">0%</span></span>
+                            <span>30D:<span class="mini-val" id="fut-wr-m">0%</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mini-metric-panel" id="backtest-panel">
+                    <div class="mini-metric-box flex-1">
+                        <div class="mini-title flex-between">
+                            <span>AI Out-of-Sample Backtest (Last 100 Candles)</span>
+                            <button id="btn-run-backtest" class="link-action-btn">▶ RUN BACKTEST</button>
+                        </div>
+                        <div class="mini-flex u-mt-4">
+                            <span>WR: <span class="mini-val" id="bt-wr">-</span></span>
+                            <span>Sim Factor: <span class="mini-val" id="bt-pf">-</span></span>
+                            <span>Expectancy: <span class="mini-val" id="bt-exp">-</span></span>
+                            <span>Max DD: <span class="mini-val" id="bt-dd">-</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mini-metric-panel u-mb-10">
+                    <div class="mini-metric-box flex-1">
+                        <div class="mini-title">Strategy Engine Status (Auto Rotation)</div>
+                        <div class="mini-flex flex-wrap-gap" id="ai-weights-display"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="filter-tabs" id="filter-tabs-modal">
+                        <button class="tab-btn active" data-ledger-filter="FUTURES">Futures</button>
+                        <button class="tab-btn" data-ledger-filter="POLY">Polymarket</button>
+                        <button class="tab-btn" data-ledger-filter="WIN">Win</button>
+                        <button class="tab-btn" data-ledger-filter="LOSS">Loss</button>
+                    </div>
+                    <div class="ledger-actions">
+                        <button class="tab-btn clear-log-btn" id="btn-clear-logs">Clear Log</button>
+                    </div>
+                    <div class="memory-list" id="memory-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal-content settings-modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="settings-title">Pengaturan</h2>
+                <button class="close-btn" id="btn-close-settings" aria-label="Tutup pengaturan">&times;</button>
+            </div>
+            <div class="modal-body settings-body">
+                <div class="settings-account" id="settings-account">Login dengan email untuk memakai pengaturan ini.</div>
+
+                <div class="settings-section">
+                    <div class="settings-section-title">Auto Backtest AI</div>
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="abt-toggle">
+                        <span>Aktifkan entry otomatis saat sinyal kuat</span>
+                    </label>
+                    <p class="settings-hint">
+                        Saat aktif, setiap sinyal kuat akan membuka posisi <strong>demo</strong> otomatis lengkap dengan SL/TP,
+                        lalu hasilnya dihitung ke winrate di bawah. Tidak ada order real ke exchange.
+                    </p>
+                    <div class="settings-grid">
+                        <label class="settings-field">
+                            <span>Mode sinyal</span>
+                            <select id="abt-mode">
+                                <option value="CONS">Konservatif (hanya sinyal EXECUTE)</option>
+                                <option value="AGG">Agresif (skor AI)</option>
+                            </select>
+                        </label>
+                        <label class="settings-field">
+                            <span>Min confidence otak hewan (%)</span>
+                            <input type="number" id="abt-min-confidence" min="30" max="95" step="1" inputmode="numeric">
+                        </label>
+                        <label class="settings-field">
+                            <span>Min skor AI (mode agresif)</span>
+                            <input type="number" id="abt-min-score" min="10" max="100" step="1" inputmode="numeric">
+                        </label>
+                        <label class="settings-field">
+                            <span>Risiko per trade (% saldo)</span>
+                            <input type="number" id="abt-risk-pct" min="0.1" max="10" step="0.1" inputmode="decimal">
+                        </label>
+                        <label class="settings-field">
+                            <span>Leverage</span>
+                            <input type="number" id="abt-leverage" min="1" max="125" step="1" inputmode="numeric">
+                        </label>
+                        <label class="settings-field">
+                            <span>Maks posisi auto</span>
+                            <input type="number" id="abt-max-open" min="1" max="5" step="1" inputmode="numeric">
+                        </label>
+                        <label class="settings-field">
+                            <span>Cooldown per pair (menit)</span>
+                            <input type="number" id="abt-cooldown" min="0" max="720" step="1" inputmode="numeric">
+                        </label>
+                        <label class="settings-field">
+                            <span>Jeda setelah loss beruntun</span>
+                            <input type="number" id="abt-loss-streak" min="0" max="10" step="1" inputmode="numeric">
+                        </label>
+                    </div>
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="abt-require-gate">
+                        <span>Wajib lolos Neural Risk Gate</span>
+                    </label>
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="abt-require-pattern">
+                        <span>Wajib searah dengan pola data luas</span>
+                    </label>
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="abt-use-trailing">
+                        <span>Trailing stop otomatis (ATR)</span>
+                    </label>
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="abt-use-be">
+                        <span>SL+ otomatis (pindah SL ke entry saat rasio &gt; 1:1)</span>
+                    </label>
+                </div>
+
+                <div class="settings-section" id="abt-panel">
+                    <div class="settings-section-title">Hasil Winrate Auto Backtest AI</div>
+                    <div id="abt-login-note" class="settings-note">Fitur ini khusus akun yang login dengan email.</div>
+                    <div class="abt-metric-grid">
+                        <div class="abt-metric"><span class="abt-metric-label">Winrate total</span><span class="abt-metric-value" id="abt-wr">—</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">24 jam</span><span class="abt-metric-value" id="abt-wr-d1">—</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">7 hari</span><span class="abt-metric-value" id="abt-wr-d7">—</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">30 hari</span><span class="abt-metric-value" id="abt-wr-d30">—</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">Total trade</span><span class="abt-metric-value" id="abt-trades">0</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">Posisi auto aktif</span><span class="abt-metric-value" id="abt-open">0</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">Profit factor</span><span class="abt-metric-value" id="abt-pf">—</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">Expectancy</span><span class="abt-metric-value" id="abt-exp">—</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">PnL kumulatif</span><span class="abt-metric-value" id="abt-pnl">—</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">Max drawdown</span><span class="abt-metric-value" id="abt-dd">—</span></div>
+                        <div class="abt-metric"><span class="abt-metric-label">Streak</span><span class="abt-metric-value" id="abt-streak">0</span></div>
+                    </div>
+                    <div class="abt-status-line">Status: <span id="abt-status">—</span></div>
+                    <div class="abt-server-status is-unknown" id="abt-server-status">Engine server: memeriksa…</div>
+                    <div class="settings-subtitle">Per pair</div>
+                    <div class="abt-pairs" id="abt-pairs"></div>
+                    <div class="settings-subtitle">Riwayat trade auto terakhir</div>
+                    <div class="abt-log" id="abt-log"></div>
+                    <div class="settings-hint" id="abt-record-count">0 trade tercatat</div>
+                    <div class="settings-subtitle">Kenapa entry / tidak entry</div>
+                    <div class="abt-decisions" id="abt-decisions"></div>
+                    <div class="settings-actions">
+                        <button class="btn btn-secondary" id="abt-reset-stats" type="button">Reset Statistik</button>
+                        <button class="btn btn-secondary" id="abt-reset-cooldown" type="button">Reset Cooldown</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-title">Data Pola Otak Hewan</div>
+                    <div class="settings-row"><span>Cakupan data</span><span id="settings-pattern-scope">—</span></div>
+                    <div class="settings-row"><span>Status</span><span id="settings-pattern-status">—</span></div>
+                    <button class="btn btn-secondary w-100" id="btn-refresh-patterns" type="button">Muat Ulang Data Pola</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="action-modal" >
+        <div class="modal-content action-modal-content" >
+            <div class="modal-header">
+                <h2 id="action-modal-title" class="modal-title">Action</h2>
+                <button class="close-btn" id="btn-close-action">&times;</button>
+            </div>
+            <div class="modal-body action-modal-body" id="action-modal-body">
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Wallet Tracker — pengaturan copy trade -->
+    <div id="wt-copy-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="wt-copy-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="wt-copy-title">Copy Trade ke Demo</h2>
+                <button class="close-btn" aria-label="Tutup">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="wt-sub u-mb-8">Wallet: <span id="wt-copy-addr"></span>
+                    <button class="tab-btn wt-addr-btn" id="wt-copy-addr-copy" type="button" title="Salin alamat wallet lengkap">📋 Salin</button>
+                    <button class="tab-btn wt-addr-btn" id="wt-copy-addr-detail" type="button" title="Lihat detail wallet">🔍 Detail</button>
+                </div>
+                <div class="wt-copy-note">Atur margin dan leverage yang akan dipakai untuk <strong>setiap posisi</strong> yang dicopy dari wallet ini.</div>
+                <div class="wt-form-grid">
+                    <div><label class="modal-label" for="wt-set-margin">Margin per posisi ($)</label><input type="number" id="wt-set-margin" class="input-text" value="50" min="5" max="5000" step="5"></div>
+                    <div><label class="modal-label" for="wt-set-lev">Leverage (x)</label><input type="number" id="wt-set-lev" class="input-text" value="10" min="1" max="125" step="1"></div>
+                    <div><label class="modal-label" for="wt-set-marginmode">Mode margin</label><select id="wt-set-marginmode" class="input-text"><option value="ISOLATED" selected>Isolated</option><option value="CROSS">Cross</option></select></div>
+                    <div><label class="modal-label" for="wt-set-maxpos">Max posisi bersamaan</label><input type="number" id="wt-set-maxpos" class="input-text" value="3" min="1" max="5" step="1"></div>
+                    <div><label class="modal-label" for="wt-set-mineq">Min equity target ($) (0=off)</label><input type="number" id="wt-set-mineq" class="input-text" value="0" min="0" step="100"></div>
+                </div>
+                <div class="u-mb-8"><label class="modal-label" for="wt-set-blacklist">Blacklist koin (pisahkan koma)</label><input type="text" id="wt-set-blacklist" class="input-text" placeholder="cth: BTC, ETH"></div>
+                <label class="wt-check"><input type="checkbox" id="wt-set-onlynew" checked> Hanya posisi BARU setelah copy dimulai (disarankan)</label>
+                <label class="wt-check"><input type="checkbox" id="wt-set-existing"> Ikut salin posisi yang sudah terbuka saat ini</label>
+                <div class="wt-sub u-mb-8">Setiap open/close dari wallet target akan dicerminkan sebagai posisi demo dengan margin & leverage di atas. Posisi demo ditandai <strong>COPY_TRADE</strong> dan bisa di on/off dari Trading Ledger.</div>
+                <div class="row-between">
+                    <button class="tab-btn" id="wt-copy-cancel" type="button">Batal</button>
+                    <button class="btn btn-primary" id="wt-copy-start" type="button">🚀 Mulai Copy Trade</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Pergerakan Wallet Bandar — pantau whale BTC (beli/jual) -->
+    <div id="bandar-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="bandar-title">
+        <div class="modal-content modal-content--bandar">
+            <div class="modal-header">
+                <h2 class="modal-title" id="bandar-title">🐋 Pergerakan Wallet Bandar</h2>
+                <button class="close-btn" data-bandar-close aria-label="Tutup">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="wt-sub u-mb-8">18 wallet bandar BTC + 3 wallet bandar HYPE (Hyperliquid) terpantau. Cron memeriksa tiap 10 menit; pergerakan ≥ ambang memicu notif email <strong>MASUK/BELI</strong> 🟢 atau <strong>KELUAR/JUAL</strong> 🔴.</div>
+                <div id="bandar-modal-body"></div>
+                <div class="row-between row-between--mt12">
+                    <span class="wt-sub">Sumber data: mempool.space (on-chain publik)</span>
+                    <button class="tab-btn" data-bandar-close type="button">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="shared/pairs.js"></script>
+    <script src="src/config.js"></script>
+    <script src="src/utils/storage.js"></script>
+    <script src="src/utils/format.js"></script>
+    <script src="src/utils/api.js"></script>
+    <script src="src/utils/trading.js"></script>
+    <script src="src/data/deepHistory.js"></script>
+    <script src="src/state/appState.js"></script>
+    <script src="src/ui/toastUI.js"></script>
+    <script src="src/indicators/math.js"></script>
+    <script src="src/indicators/moonSignals.js"></script>
+    <script src="src/charts/chartSetup.js"></script>
+    <script src="src/charts/candleValidation.js"></script>
+    <script src="src/charts/historyLoader.js"></script>
+    <script src="src/charts/chartLifecycle.js"></script>
+    <script src="src/engines/marketFeed.js"></script>
+    <script src="src/engines/futuresEngine.js"></script>
+    <script src="src/auth/googleAuth.js"></script>
+    <script src="src/neural/neuralCore.js"></script>
+    <script src="src/neural/marketPhysics.js"></script>
+    <script src="src/neural/featureEngine.js"></script>
+    <script src="src/neural/patternMemory.js"></script>
+    <script src="src/neural/agentChimpanzee.js"></script>
+    <script src="src/neural/agentRaven.js"></script>
+    <script src="src/neural/agentDolphin.js"></script>
+    <script src="src/neural/agentElephant.js"></script>
+    <script src="src/neural/agentEagle.js"></script>
+    <script src="src/neural/agentOwl.js"></script>
+    <script src="src/neural/agentDragonfly.js"></script>
+    <script src="src/neural/agentOctopus.js"></script>
+    <script src="src/neural/synapticNetwork.js"></script>
+    <script src="src/neural/metaBrain.js"></script>
+    <script src="src/neural/riskGate.js"></script>
+    <script src="src/neural/animalNeuralSystem.js"></script>
+    <script src="src/neural/neuralUI.js"></script>
+    <script src="src/neural/neuralCanvas.js"></script>
+    <script src="src/engines/intelligenceEngine.js"></script>
+    <script src="src/engines/autoBacktestAI.js"></script>
+    <script src="src/quant/metrics.js"></script>
+    <script src="src/engines/marketUniverse.js"></script>
+    <script src="src/engines/arbitrageScanner.js"></script>
+    <script src="src/engines/walletTracker.js"></script>
+    <script src="src/utils/copyTradeApi.js"></script>
+    <script src="src/engines/copyTrade.js"></script>
+    <script src="src/ui/walletTrackerUI.js"></script>
+    <script src="src/ui/bandarWalletUI.js"></script>
+    <script src="src/main.js"></script>
+</body>
+</html>

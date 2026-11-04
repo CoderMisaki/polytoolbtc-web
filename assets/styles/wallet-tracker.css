@@ -1,0 +1,142 @@
+/* assets/styles/wallet-tracker.css — gaya kartu Wallet Tracker (Smart Money) */
+#wallet-tracker-card .wt-meta { font-size: 11px; opacity: .75; margin-bottom: 8px; }
+.wt-list { display: flex; flex-direction: column; gap: 8px; }
+.wt-row { display: flex; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--border, #2a2f3a); border-radius: 10px; background: rgba(255,255,255,.02); cursor: pointer; transition: background .15s, border-color .15s; }
+.wt-row:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.15); }
+.wt-rank { font-size: 20px; min-width: 30px; text-align: center; font-weight: 700; }
+.wt-main { flex: 1; min-width: 0; }
+.wt-name { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-sub { font-size: 11px; opacity: .8; margin-top: 2px; }
+.wt-actions { display: flex; flex-direction: column; gap: 6px; }
+.wt-actions .tab-btn, .wt-actions .btn { font-size: 11px; padding: 5px 10px; min-width: 66px; cursor: pointer; pointer-events: auto; position: relative; z-index: 2; }
+.wt-copy-btn-fixed { background: linear-gradient(135deg, #22c55e, #16a34a) !important; color: #fff !important; border-color: transparent !important; font-weight: 600; }
+.wt-detail-copy-btn { margin-bottom: 8px; font-size: 12px; }
+.wt-pos { color: #22c55e; font-weight: 600; }
+.wt-neg { color: #ef4444; font-weight: 600; }
+.wt-loading, .wt-empty, .wt-error { padding: 14px; text-align: center; font-size: 12px; opacity: .85; }
+.wt-error { color: #ef4444; }
+.wt-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.wt-detail-head { margin: 10px 0; }
+.wt-table-wrap { overflow-x: auto; margin-bottom: 10px; }
+.wt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.wt-table th, .wt-table td { padding: 6px 8px; border-bottom: 1px solid var(--border, #2a2f3a); text-align: left; white-space: nowrap; }
+.wt-table th { font-size: 10px; text-transform: uppercase; opacity: .7; }
+.wt-table tr { cursor: default; }
+.wt-entry-chart-btn { font-size: 10px; padding: 3px 8px; cursor: pointer; pointer-events: auto; }
+.wt-fills { display: flex; flex-direction: column; gap: 4px; font-size: 11px; margin-bottom: 10px; }
+.wt-fill { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.03); align-items: center; flex-wrap: wrap; }
+.wt-fill-block { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.03); }
+.wt-fill-block .wt-fill { padding: 0; background: none; border-radius: 0; }
+.wt-fill-time { font-size: 10px; color: var(--muted, #8b93a7); padding-left: 2px; }
+.wt-copy-card { border: 1px solid var(--border, #2a2f3a); border-radius: 10px; padding: 10px; margin-bottom: 10px; background: rgba(255,255,255,.02); }
+.wt-copy-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+.wt-status-on { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.wt-status-off { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.wt-copy-controls { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; gap: 8px; flex-wrap: wrap; }
+.wt-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; user-select: none; }
+.wt-toggle input { width: 16px; height: 16px; cursor: pointer; }
+.wt-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.wt-check { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; cursor: pointer; }
+.wt-check input { width: 16px; height: 16px; cursor: pointer; }
+.wt-copy-note { font-size: 12px; padding: 8px; border-radius: 8px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); margin-bottom: 10px; color: #86efac; }
+#wt-copy-modal .modal-content { max-width: 480px; }
+#wt-detail .tab-btn, #wt-detail .btn { margin-bottom: 8px; margin-right: 6px; cursor: pointer; pointer-events: auto; }
+
+/* ---- leaderboard filters ---- */
+.wt-filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; }
+.wt-filter-label { font-size: 11px; opacity: .7; }
+.wt-select { background: rgba(255,255,255,.05); color: #e5e7eb; border: 1px solid var(--border, #2a2f3a); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+.wt-select option { background: #18181b; }
+.wt-lb-refresh { font-size: 11px; padding: 4px 10px; cursor: pointer; }
+
+/* ---- entry mini chart ---- */
+.wt-entry-chart-wrap { border: 1px solid var(--border, #2a2f3a); border-radius: 10px; padding: 10px; margin-bottom: 12px; background: rgba(0,0,0,.3); }
+.wt-entry-chart { width: 100%; height: 260px; position: relative; }
+.wt-entry-chart > div { border-radius: 8px; overflow: hidden; }
+.wt-entry-tf { display: flex; gap: 6px; margin-bottom: 8px; }
+.wt-entry-tf .tab-btn { font-size: 11px; padding: 5px 14px; cursor: pointer; }
+.wt-entry-legend { margin-top: 8px; font-size: 12px; }
+.wt-entry-legend-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wt-goto-main-chart { font-size: 11px; padding: 3px 10px; cursor: pointer; pointer-events: auto; }
+
+/* ---- riwayat pencarian wallet ---- */
+.wt-hist-list { display: flex; flex-direction: column; gap: 6px; }
+.wt-hist-row { display: flex; gap: 6px; align-items: stretch; }
+.wt-hist-open { flex: 1; min-width: 0; text-align: left; font-family: inherit; color: inherit;
+    background: rgba(255,255,255,.03); border: 1px solid var(--border, #2a2f3a);
+    border-radius: 8px; padding: 8px 10px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 2px; justify-content: center; }
+.wt-hist-open:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.15); }
+.wt-hist-name { font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-hist-addr { margin-top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-hist-row .tab-btn { font-size: 13px; padding: 8px 12px; cursor: pointer; align-self: center; flex-shrink: 0; }
+.wt-hist-input { font-size: 12px; padding: 5px 8px; width: 100%; }
+
+/* ---- copy trade badge on trading ledger ---- */
+.wt-ledger-copy-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 3px 8px; border-radius: 6px; background: rgba(34, 197, 94, 0.15); color: #22c55e; font-weight: 600; margin-left: 8px; }
+.wt-ledger-copy-badge.is-off { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.wt-ledger-copy-toggle { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 4px; }
+.wt-ledger-copy-toggle input { width: 14px; height: 14px; cursor: pointer; }
+.wt-ledger-copy-section { border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 10px; padding: 10px; margin-bottom: 10px; background: rgba(34, 197, 94, 0.05); }
+.wt-ledger-copy-title { font-weight: 700; color: #22c55e; font-size: 13px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+
+/* COPY pill pada posisi aktif di ledger */
+.wt-copy-pill {
+    background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+    color: #fff !important;
+    border: none !important;
+    font-weight: 700 !important;
+    font-size: 9px !important;
+}
+
+/* Baris wallet copy di ledger */
+.wt-sub-muted { opacity: .7 !important; }
+.wt-ledger-copy-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.03);
+    flex-wrap: wrap;
+}
+.wt-ledger-copy-info { font-size: 12px; }
+
+/* Banner peringatan di tab Copy Saya */
+.wt-copy-banner {
+    font-size: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+.wt-copy-banner-warn {
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    color: #fde68a;
+}
+.wt-copy-banner-sync {
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #86efac;
+}
+.wt-login-link {
+    color: #60a5fa;
+    text-decoration: underline;
+    font-weight: 600;
+    cursor: pointer;
+    pointer-events: auto;
+}
+.wt-login-link:hover { color: #93c5fd; }
+
+/* Tombol kecil di sebelah alamat pada modal copy */
+.wt-addr-btn { font-size: 10px !important; padding: 3px 8px !important; margin-left: 6px; cursor: pointer; vertical-align: middle; }
+
+/* Pastikan tombol di kartu wallet tracker bisa diklik (tidak tertutup elemen lain) */
+#wallet-tracker-card button, #wt-detail button, #wt-copy-modal button {
+    pointer-events: auto !important;
+    position: relative;
+    z-index: 5;
+}
