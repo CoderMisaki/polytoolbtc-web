@@ -84,6 +84,39 @@
         // blok ini tidak pernah tersentuh (/api selalu ada). Bila fallback
         // ikut gagal, error asli tetap yang dilempar (jujur, bukan
         // disamarkan).
+        //
+        // Jalur cepat 2026-11-05 (GitHub Pages, sebelum live fallback):
+        // snapshot precomputed untuk aksi berat (recommend semua window,
+        // leaderboard default) yang diperbarui tiap 10 menit oleh GitHub
+        // Actions — satu JSON kecil dari origin yang sama, tanpa unduhan
+        // stats 40MB dari HP (itu yang bikin tracker stuck loading di 4G).
+        try {
+            var parsedSnap = parseFallbackQuery(url);
+            var snapUrl = null;
+            if (parsedSnap) {
+                var p = parsedSnap.params;
+                if (parsedSnap.action === 'recommend' && p.window) {
+                    snapUrl = 'data/tracker-recommend-' + p.window + '.json';
+                } else if (parsedSnap.action === 'leaderboard' && p.window) {
+                    var sortBy = p.sortBy || 'score';
+                    var limit = p.limit || '50';
+                    var noFilter = !p.minEquity && !p.maxEquity && !p.minWinRate;
+                    if (sortBy === 'score' && limit === '50' && noFilter) {
+                        snapUrl = 'data/tracker-leaderboard-' + p.window + '.json';
+                    }
+                }
+            }
+            if (snapUrl) {
+                var snapRes = await fetch(snapUrl, { cache: 'no-store', headers: { 'Accept': 'application/json' } });
+                if (snapRes.ok) {
+                    var snap = await snapRes.json();
+                    // Snapshot kosong (0 wallet — mis. builder gagal
+                    // enrichment) TIDAK dipakai; jatuh ke live fallback
+                    // supaya tab tidak tampil kosong padahal ada datanya.
+                    if (snap && Array.isArray(snap.wallets) && snap.wallets.length > 0) return snap;
+                }
+            }
+        } catch (_) { /* jatuh ke live fallback di bawah */ }
         try {
             var fb = (typeof window !== 'undefined' && window.WalletTrackerFallback) || null;
             var parsed = parseFallbackQuery(url);

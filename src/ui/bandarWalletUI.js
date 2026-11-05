@@ -185,6 +185,23 @@
             state.data = json.data || json;
             render();
         } catch (e) {
+            // Jalur cepat 2026-11-05 (GitHub Pages): snapshot precomputed
+            // yang diperbarui tiap 10 menit oleh GitHub Actions — satu JSON
+            // kecil dari origin yang sama, sehingga di HP tidak perlu lagi
+            // live-fetch ~70 request upstream (itu yang bikin modal stuck
+            // loading ber menit-menit di 4G). Bila snapshot belum ada atau
+            // rusak, lanjut ke live fallback di bawah.
+            try {
+                var snapRes = await fetch('data/bandar-snapshot.json', { cache: 'no-store', headers: { 'Accept': 'application/json' } });
+                if (snapRes.ok) {
+                    var snap = await snapRes.json();
+                    if (snap && Array.isArray(snap.wallets) && snap.wallets.length > 0 && Array.isArray(snap.hypeWallets)) {
+                        state.data = snap;
+                        render();
+                        return;
+                    }
+                }
+            } catch (snapErr) { /* lanjut ke live fallback di bawah */ }
             // Fallback 2026-11-05: backend /api tidak ada di host statis
             // (GitHub Pages) sehingga fetch di atas 404 — bangun snapshot
             // yang sama langsung dari mempool.space + Hyperliquid publik.

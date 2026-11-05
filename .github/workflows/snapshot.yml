@@ -1,0 +1,43 @@
+# Snapshot precomputed untuk GitHub Pages.
+#
+# Repo ini (polytoolbtc-web) adalah mirror PUBLIK berisi build statis dari
+# Polytoolbtc. Karena tidak ada backend /api di Pages, workflow ini
+# membangun snapshot data bandar + tracker tiap 10 menit dari API publik
+# (mempool.space, Hyperliquid) dan meng-commit hasilnya ke data/*.json.
+# Frontend memakai file-file itu dulu (jalur snapshot-first) sehingga HP
+# pengunjung cukup fetch satu JSON kecil — semulus /api di Vercel —
+# tanpa live-fetch ~70 request upstream atau unduhan stats 40MB.
+#
+# Biaya: repo PUBLIK = GitHub Actions gratis tanpa batas menit.
+# Workflow ini hanya trigger oleh jadwal + manual (workflow_dispatch),
+# BUKAN oleh push — jadi commit snapshot tidak memicu run baru (no loop).
+# Penjadwalan GitHub Actions bisa meleset beberapa menit dari jadwal;
+# itu wajar dan tidak memengaruhi keabsahan snapshot (updatedAt tercatat
+# di dalam tiap file).
+
+name: snapshot
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build snapshots
+        run: node scripts/build-snapshots.mjs
+      - name: Commit snapshots bila berubah
+        run: |
+          git config user.name CoderMisaki
+          git config user.email izkalavender@gmail.com
+          git add data/
+          git diff --cached --quiet || (git commit -m "snapshot: auto (bandar + tracker)" && git push)
