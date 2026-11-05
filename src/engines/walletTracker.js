@@ -45,9 +45,26 @@
         catch (_) { /* storage penuh / privat: abaikan */ }
     }
 
+    // Parser query minimal untuk fallback (tanpa URLSearchParams agar
+    // konsisten dengan gaya ES5 file ini).
+    function parseFallbackQuery(url) {
+        var q = String(url || '').split('?')[1] || '';
+        var params = {};
+        q.split('&').forEach(function (pair) {
+            if (!pair) return;
+            var eq = pair.indexOf('=');
+            var k = decodeURIComponent(eq >= 0 ? pair.slice(0, eq) : pair);
+            var v = eq >= 0 ? decodeURIComponent(pair.slice(eq + 1)) : '';
+            params[k] = v;
+        });
+        if (!params.action) return null;
+        return { action: params.action, params: params };
+    }
+
     async function fetchJson(url, timeoutMs) {
         var ctrl = new AbortController();
         var t = setTimeout(function () { ctrl.abort(); }, timeoutMs || 25000);
+        var originalErr = null;
         try {
             var res = await fetch(url, { signal: ctrl.signal });
             var body = null;
@@ -58,7 +75,23 @@
             }
             if (!body || body.ok !== true) throw new Error((body && body.error) || 'Respons API tidak valid');
             return body.data;
+        } catch (e) {
+            originalErr = e;
         } finally { clearTimeout(t); }
+        // Fallback 2026-11-05: backend /api tidak ada di host statis
+        // (GitHub Pages) sehingga fetch di atas 404 — hitung langsung dari
+        // upstream Hyperliquid publik via WalletTrackerFallback. Di Vercel
+        // blok ini tidak pernah tersentuh (/api selalu ada). Bila fallback
+        // ikut gagal, error asli tetap yang dilempar (jujur, bukan
+        // disamarkan).
+        try {
+            var fb = (typeof window !== 'undefined' && window.WalletTrackerFallback) || null;
+            var parsed = parseFallbackQuery(url);
+            if (fb && typeof fb.request === 'function' && parsed) {
+                return await fb.request(parsed.action, parsed.params);
+            }
+        } catch (_) { /* jatuh ke error asli di bawah */ }
+        throw originalErr;
     }
 
     async function getRecommendations(windowKey) {

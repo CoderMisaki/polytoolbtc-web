@@ -185,8 +185,24 @@
             state.data = json.data || json;
             render();
         } catch (e) {
-            if (body) body.innerHTML = '<div style="padding:24px;text-align:center;color:#ef4444">Gagal memuat data: ' + esc(e.message) + '</div>';
-            toast('Gagal memuat data bandar: ' + e.message, true);
+            // Fallback 2026-11-05: backend /api tidak ada di host statis
+            // (GitHub Pages) sehingga fetch di atas 404 — bangun snapshot
+            // yang sama langsung dari mempool.space + Hyperliquid publik.
+            // Di Vercel jalur ini tidak pernah tersentuh (/api selalu ada).
+            var fb = (typeof window !== 'undefined' && window.BandarFallback) || null;
+            if (fb && typeof fb.buildSnapshot === 'function') {
+                try {
+                    state.data = await fb.buildSnapshot();
+                    render();
+                    return;
+                } catch (fbErr) {
+                    if (body) body.innerHTML = '<div style="padding:24px;text-align:center;color:#ef4444">Gagal memuat data: ' + esc(e.message) + ' (fallback juga gagal: ' + esc(fbErr.message) + ')</div>';
+                    toast('Gagal memuat data bandar: ' + e.message, true);
+                }
+            } else {
+                if (body) body.innerHTML = '<div style="padding:24px;text-align:center;color:#ef4444">Gagal memuat data: ' + esc(e.message) + '</div>';
+                toast('Gagal memuat data bandar: ' + e.message, true);
+            }
         } finally {
             state.loading = false;
         }
