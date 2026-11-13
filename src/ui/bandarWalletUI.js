@@ -155,11 +155,15 @@
         m.classList.remove('is-hidden');
         m.classList.add('active');
         load();
-        // Auto-refresh realtime (2026-11-02): snapshot job diperbarui tiap
-        // 1 menit, jadi poll 60 detik — lebih cepat tidak ada gunanya karena
-        // data baru hanya tersedia tiap 1 menit. Berhenti saat modal ditutup.
+        // Auto-refresh snapshot tiap 60 detik. Catatan (2026-11-13):
+        // snapshot GitHub Actions cuma diperbarui tiap 10 menit, jadi
+        // poll 60 detik saja TIDAK bikin entry bergerak — isinya sama
+        // 9x dari 10. Yang bikin perps bergerak realtime adalah live
+        // poller di bawah (startLivePerps, tiap 15 detik ke Hyperliquid).
+        // Keduanya berhenti saat modal ditutup.
         if (state.refreshTimer) clearInterval(state.refreshTimer);
         state.refreshTimer = setInterval(function () { load(true); }, 60000);
+        startLivePerps();
     }
 
     function closeModal() {
@@ -168,6 +172,7 @@
         m.classList.add('is-hidden');
         m.classList.remove('active');
         if (state.refreshTimer) { clearInterval(state.refreshTimer); state.refreshTimer = null; }
+        stopLivePerps();
     }
 
     async function load(silent) {
@@ -225,6 +230,160 @@
         }
     }
 
+    // ---- Live perps overlay (2026-11-13) ----
+    // Masalah: entry perps kelihatan "stuck" karena snapshot GitHub Actions
+    // cuma diperbarui tiap 10 menit, walau modal sudah poll tiap 60 detik.
+    // Supaya perps benar-benar bergerak realtime, selagi modal terbuka kita
+    // poll Hyperliquid clearinghouseState LANGSUNG dari browser tiap 15
+    // detik (1 request per wallet, 12 wallet) dan patch sel perps di tempat
+    // tanpa render ulang — scroll tidak loncat. Sisi BTC + alert + total
+    // tetap ikut snapshot 10 menit (saldo BTC bergerak lambat, dan mempool
+    // per alamat jauh lebih berat: 19 wallet x 2 request).
+    // CORS: api.hyperliquid.xyz mengizinkan POST dari browser — jalur yang
+    // sama sudah dipakai bandarFallback.js sejak 2026-11-05.
+    var HL_INFO = 'https://api.hyperliquid.xyz/info';
+    var LIVE_INTERVAL_MS = 15000;
+    var LIVE_TIMEOUT_MS = 10000;
+    var LIVE_COINS = ['HYPE', 'BTC', 'ETH', 'SOL', 'STRK', 'W', 'DOGE', 'XRP', 'ENA', 'ZRO', 'ZEC', 'TRX', 'VVV', 'AAVE', 'UNI', 'PUMP', 'ASTER', 'PAXG', 'NEAR', 'XMR'];
+    var live = { timer: null, statusTimer: null, running: false, lastOk: null, failStreak: 0 };
+
+    function hlClearinghouse(user) {
+        var ctrl = null;
+        try { ctrl = new AbortController(); } catch (_) { ctrl = null; }
+        var timer = null;
+        if (ctrl) timer = setTimeout(function () { try { ctrl.abort(); } catch (_) {} }, LIVE_TIMEOUT_MS);
+        var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'clearinghouseState', user: user }) };
+        if (ctrl) opts.signal = ctrl.signal;
+        return fetch(HL_INFO, opts).then(function (res) {
+            if (timer) clearTimeout(timer);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        }).catch(function (e) {
+            if (timer) clearTimeout(timer);
+            throw e;
+        });
+    }
+
+    function livePerpPnlPct(size, entry, mark) {
+        if (!Number.isFinite(size) || size === 0) return null;
+        if (!Number.isFinite(entry) || entry === 0) return null;
+        if (!Number.isFinite(mark) || mark <= 0) return null;
+        var pct = Math.sign(size) * ((mark - entry) / entry) * 100;
+        return pct === 0 ? 0 : pct;
+    }
+
+    // Sel perps satu koin — tampilan SAMA dengan perpCoinTxt di render()
+    // (LONG/SHORT + entry + PnL%), supaya snapshot dan live tidak pernah
+    // tampil beda format.
+    function livePerpCellHtml(size, entry, unit, pct) {
+        if (size === null || size === undefined || !isFinite(Number(size)) || Number(size) === 0)
+            return '<span style="color:#666">—</span>';
+        var sz = Number(size);
+        var amt = Math.abs(sz).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' ' + unit;
+        var color = sz > 0 ? '#22c55e' : '#ef4444';
+        var out = '<span style="color:' + color + ';font-weight:700">' + (sz > 0 ? 'LONG ' : 'SHORT ') + amt + '</span>';
+        if (entry) out += '<div style="font-size:10px;color:#666">entry $' + esc(fmtUsd(entry)) + '</div>';
+        if (pct === null || pct === undefined || !isFinite(Number(pct))) return out;
+        var v = Number(pct);
+        var pColor = v > 0 ? '#22c55e' : (v < 0 ? '#ef4444' : '#9ca3af');
+        out += '<div style="font-size:11px;font-weight:700;color:' + pColor + '">' + (v > 0 ? '+' : '') + v.toFixed(1) + '%</div>';
+        return out;
+    }
+
+    function livePerpsFromState(perpState) {
+        var perps = {};
+        var i;
+        for (i = 0; i < LIVE_COINS.length; i++) perps[LIVE_COINS[i]] = { size: 0, entry: null, mark: null };
+        var positions = (perpState && perpState.assetPositions) || [];
+        for (var p = 0; p < positions.length; p++) {
+            var pos = positions[p].position || positions[p];
+            var coin = String(pos.coin || '');
+            if (!Object.prototype.hasOwnProperty.call(perps, coin)) continue;
+            var sz = Number(pos.szi);
+            if (!Number.isFinite(sz) || sz === 0) continue;
+            var entry = pos.entryPx != null ? Number(pos.entryPx) : null;
+            var pv = Number(pos.positionValue);
+            // positionValue bisa negatif untuk SHORT — mark selalu positif.
+            var mark = (Number.isFinite(pv) && pv !== 0) ? Math.abs(pv) / Math.abs(sz) : null;
+            if (mark !== null && mark > 0) mark = Number(mark.toPrecision(5));
+            perps[coin] = { size: Math.round(sz * 1e4) / 1e4, entry: entry, mark: mark };
+        }
+        return perps;
+    }
+
+    function livePatchCell(addr, coin, html) {
+        var body = $('bandar-modal-body');
+        if (!body) return;
+        var el = body.querySelector('[data-perp-cell="' + addr + '|' + coin + '"]');
+        if (el && el.innerHTML !== html) el.innerHTML = html;
+    }
+
+    function liveSetStatus() {
+        var el = $('bandar-live-status');
+        if (!el) return;
+        if (live.lastOk) {
+            var secs = Math.max(0, Math.round((Date.now() - live.lastOk) / 1000));
+            el.innerHTML = '<span style="color:#22c55e">● LIVE</span> <span style="color:#9ca3af">perps diperbarui ' + secs + ' dtk lalu (poll 15 dtk)</span>';
+        } else if (live.failStreak > 0) {
+            el.innerHTML = '<span style="color:#f59e0b">● LIVE gagal — menampilkan snapshot (10 mnt)</span>';
+        } else {
+            el.innerHTML = '<span style="color:#9ca3af">⏳ Menghubungkan live perps…</span>';
+        }
+    }
+
+    function liveTick() {
+        var m = $('bandar-modal');
+        if (!m || !m.classList.contains('active')) return;
+        if (live.running) return;
+        var d = state.data;
+        var wallets = (d && d.hypeWallets) || [];
+        if (!wallets.length) return;
+        live.running = true;
+        // Paralel terbatas 6 — 12 wallet x 1 request per tick.
+        var idx = 0;
+        function worker() {
+            if (idx >= wallets.length) return Promise.resolve();
+            var w = wallets[idx++];
+            return hlClearinghouse(w.address).then(function (st) {
+                var perps = livePerpsFromState(st);
+                for (var c = 0; c < LIVE_COINS.length; c++) {
+                    var coin = LIVE_COINS[c];
+                    var pr = perps[coin];
+                    var pct = livePerpPnlPct(pr.size, pr.entry, pr.mark);
+                    livePatchCell(w.address, coin, livePerpCellHtml(pr.size, pr.entry, coin, pct));
+                }
+            }).catch(function () { /* wallet gagal: sel dibiarkan apa adanya */ }).then(worker);
+        }
+        var workers = [];
+        for (var k = 0; k < Math.min(6, wallets.length); k++) workers.push(worker());
+        Promise.all(workers).then(function () {
+            live.running = false;
+            live.lastOk = Date.now();
+            live.failStreak = 0;
+            liveSetStatus();
+        }).catch(function () {
+            live.running = false;
+            live.failStreak++;
+            liveSetStatus();
+        });
+    }
+
+    function startLivePerps() {
+        stopLivePerps();
+        live.lastOk = null;
+        live.failStreak = 0;
+        liveTick();
+        live.timer = setInterval(liveTick, LIVE_INTERVAL_MS);
+        // Status "x detik lalu" ikut bergerak tiap detik tanpa fetch baru.
+        live.statusTimer = setInterval(liveSetStatus, 1000);
+    }
+
+    function stopLivePerps() {
+        if (live.timer) { clearInterval(live.timer); live.timer = null; }
+        if (live.statusTimer) { clearInterval(live.statusTimer); live.statusTimer = null; }
+        live.running = false;
+    }
+
     function render() {
         var body = $('bandar-modal-body');
         if (!body || !state.data) return;
@@ -253,7 +412,7 @@
 
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0 8px">' +
             '<strong>₿ Daftar wallet bandar (BTC)</strong>' +
-            '<span style="font-size:11px;color:#9ca3af">⏱ auto-refresh 60 dtk</span>' +
+            '<span style="font-size:11px;color:#9ca3af">⏱ snapshot refresh 60 dtk</span>' +
             '<button class="tab-btn" id="bandar-refresh" type="button">🔄 Refresh</button></div>';
         html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
             '<thead><tr style="text-align:left;color:#9ca3af;border-bottom:1px solid #333">' +
@@ -280,8 +439,9 @@
         html += '</tbody></table></div>';
 
         // ---- Bandar HYPE (Hyperliquid) ----
-        html += '<div style="margin:18px 0 8px"><strong>💎 Daftar wallet bandar (HYPE)</strong>' +
-            '<div style="font-size:11px;color:#9ca3af">Spot + staking + posisi perps, dicek tiap 1 menit via Hyperliquid API</div></div>';
+        html += '<div style="margin:18px 0 8px"><strong>💎 Daftar wallet bandar (HYPE)</strong> ' +
+            '<span id="bandar-live-status" style="font-size:11px"></span>' +
+            '<div style="font-size:11px;color:#9ca3af">Spot + staking dari snapshot (10 mnt); posisi perps LIVE tiap 15 dtk via Hyperliquid API</div></div>';
         html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
             '<thead><tr style="text-align:left;color:#9ca3af;border-bottom:1px solid #333">' +
             '<th style="padding:6px">Label</th><th style="padding:6px">Alamat</th>' +
@@ -373,26 +533,26 @@
                 '<td style="padding:6px;text-align:right">' + fmtHype(w.spot) + '</td>' +
                 '<td style="padding:6px;text-align:right">' + fmtHype(w.staked) + '</td>' +
                 '<td style="padding:6px;text-align:right"><strong>' + fmtHype(w.total) + '</strong></td>' +
-                '<td style="padding:6px;text-align:right">' + perpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + btcPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + ethPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + solPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + strkPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + wPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + dogePerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + xrpPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + enaPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + zroPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + zecPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + trxPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + vvvPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + aavePerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + uniPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + pumpPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + asterPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + paxgPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + nearPerpTxt + '</td>' +
-                '<td style="padding:6px;text-align:right">' + xmrPerpTxt + '</td></tr>';
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|HYPE">' + perpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|BTC">' + btcPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|ETH">' + ethPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|SOL">' + solPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|STRK">' + strkPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|W">' + wPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|DOGE">' + dogePerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|XRP">' + xrpPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|ENA">' + enaPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|ZRO">' + zroPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|ZEC">' + zecPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|TRX">' + trxPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|VVV">' + vvvPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|AAVE">' + aavePerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|UNI">' + uniPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|PUMP">' + pumpPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|ASTER">' + asterPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|PAXG">' + paxgPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|NEAR">' + nearPerpTxt + '</td>' +
+                '<td style="padding:6px;text-align:right" data-perp-cell="' + esc(w.address) + '|XMR">' + xmrPerpTxt + '</td></tr>';
         });
         html += '</tbody></table></div>';
 
