@@ -30,14 +30,18 @@
 // gagal tidak ditulis ulang sehingga snapshot lama tetap tersaji.
 //
 // Fail-closed untuk bandar-snapshot.json (2026-11-14): buildSnapshot()
-// menoleransi wallet yang gagal dimuat (baris bernilai null) demi
-// frontend fallback, TAPI baris null di hypeWallets dibaca konsumen
-// alert (diff.mjs / bandar-live-watch) sebagai 0 dan memicu CLOSE palsu.
-// Insiden 14 Nov 15:37 WIB: 10/12 wallet hype gagal → 30 alert CLOSE
-// palsu + state nol + cooldown 60 mnt. Karena itu builder MENOLAK
-// menulis bandar-snapshot.json bila ada satu pun wallet HYPE yang gagal
-// dimuat (total == null) — seperti fetch-live.mjs: snapshot lama tetap
-// tersaji (stale lebih baik daripada beracun).
+// menoleransi wallet yang gagal dimuat (baris total == null, semua ukuran
+// perp null) demi frontend fallback, TAPI baris null di hypeWallets dulu
+// dibaca konsumen alert (diff.mjs / bandar-live-watch) sebagai 0 dan memicu
+// CLOSE palsu. Insiden 14 Nov 15:37 WIB: 10/12 wallet hype gagal → 30 alert
+// CLOSE palsu + state nol + cooldown 60 mnt. Guard fail-closed sempat
+// dipasang (~16:20 WIB, tolak tulis bila ada wallet hype gagal) — tapi itu
+// malah MEMBEKUKAN snapshot 4,5 jam karena wallet hype juga sering gagal
+// dimuat dari runner Actions. PERBAIKAN PERMANEN 14 Nov 21:23 WIB: diff.mjs
+// sekarang SKIP baris null total (state lama dipertahankan, tanpa alert),
+// jadi snapshot parsial AMAN ditulis + aman di-diff — guard di sini
+// dilonggarkan jadi peringatan saja. Frontend menampilkan "—" untuk baris
+// null (bandarWalletUI.js menanganinya eksplisit).
 // Wallet BTC (spot) SENGAJA tidak ikut guard: mereka gagal 2-7 per run
 // di Actions (mis. 34yeXcv1tQSQ, bc1qt26w24cp di hampir semua run) tapi
 // tidak berbahaya — notif spot BTC mati, frontend hanya menampilkan "—",
@@ -80,15 +84,16 @@ async function attempt(name, fn) {
 
 // 1. Bandar: snapshot persis buildSnapshot(), hanya storageNote yang
 //    diganti menjelaskan mode snapshot (waktu update ada di updatedAt).
-//    Guard fail-closed (hype saja — lihat header): tolak menulis bila
-//    ada wallet hype yang gagal dimuat — lempar supaya attempt()
-//    mencatat FAIL dan file lama tetap tersaji.
+//    Guard lama (fail-closed, tolak tulis bila ada wallet hype gagal)
+//    DILONGGARKAN 14 Nov 21:23 WIB: diff.mjs sekarang skip baris null,
+//    jadi snapshot parsial aman ditulis — tulis apa adanya, cukup beri
+//    peringatan di log supaya kegagalan tetap terlihat.
 await attempt('bandar-snapshot.json', async () => {
     const snap = await bandar.buildSnapshot();
-    const failedHype = (snap.hypeWallets || []).filter((w) => w.total == null).length;
+    const failedHype = (snap.hypeWallets || []).filter((w) => !w || w.total == null).length;
     if (failedHype > 0) {
-        throw new Error('fail-closed: ' + failedHype + '/' + (snap.hypeWallets || []).length
-            + ' hype wallet gagal dimuat — snapshot tidak ditulis');
+        console.log('WARN ' + failedHype + '/' + (snap.hypeWallets || []).length
+            + ' hype wallet gagal dimuat — snapshot tetap ditulis (baris null di-skip diff.mjs)');
     }
     snap.storageNote = 'Snapshot diperbarui otomatis tiap 10 menit dari mempool.space + Hyperliquid (mode GitHub Pages — backend /api tidak tersedia selama Vercel pause).';
     write('bandar-snapshot.json', snap);
