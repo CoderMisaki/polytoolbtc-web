@@ -28,6 +28,18 @@
 // stats-data.hyperliquid.xyz). Tidak ada kredensial, tidak ada data
 // privat. Kegagalan per file tidak menggagalkan file lain; file yang
 // gagal tidak ditulis ulang sehingga snapshot lama tetap tersaji.
+//
+// Fail-closed untuk bandar-snapshot.json (2026-11-14): buildSnapshot()
+// menoleransi wallet yang gagal dimuat (baris bernilai null) demi
+// frontend fallback, TAPI baris null itu dibaca konsumen alert
+// (diff.mjs / bandar-live-watch) sebagai 0 dan memicu CLOSE palsu.
+// Insiden 14 Nov 15:37 WIB: 10/12 wallet hype gagal → 30 alert CLOSE
+// palsu + state nol + cooldown 60 mnt. Karena itu builder MENOLAK
+// menulis bandar-snapshot.json bila ada satu pun wallet yang gagal
+// dimuat (total == null / balanceBtc == null) — seperti fetch-live.mjs:
+// gagal satu wallet = gagal seluruh file, snapshot lama tetap tersaji
+// (stale lebih baik daripada beracun). File tracker sudah fail-closed
+// per file karena request() melempar saat gagal.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -64,8 +76,18 @@ async function attempt(name, fn) {
 
 // 1. Bandar: snapshot persis buildSnapshot(), hanya storageNote yang
 //    diganti menjelaskan mode snapshot (waktu update ada di updatedAt).
+//    Guard fail-closed: tolak menulis bila ada wallet yang gagal dimuat
+//    (lihat header) — lempar supaya attempt() mencatat FAIL dan file lama
+//    tetap tersaji.
 await attempt('bandar-snapshot.json', async () => {
     const snap = await bandar.buildSnapshot();
+    const failedHype = (snap.hypeWallets || []).filter((w) => w.total == null).length;
+    const failedBtc = (snap.wallets || []).filter((w) => w.balanceBtc == null).length;
+    if (failedHype > 0 || failedBtc > 0) {
+        throw new Error('fail-closed: ' + failedHype + '/' + (snap.hypeWallets || []).length
+            + ' hype + ' + failedBtc + '/' + (snap.wallets || []).length
+            + ' btc wallet gagal dimuat — snapshot tidak ditulis');
+    }
     snap.storageNote = 'Snapshot diperbarui otomatis tiap 10 menit dari mempool.space + Hyperliquid (mode GitHub Pages — backend /api tidak tersedia selama Vercel pause).';
     write('bandar-snapshot.json', snap);
 });
