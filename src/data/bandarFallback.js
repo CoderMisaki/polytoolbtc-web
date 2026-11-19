@@ -68,7 +68,7 @@
         { address: '0x9c41c478adb3772b2e6ad9acbd17ecbed9a988e6', label: 'Whale Insider #4 (40x BTC short, terbesar)', kind: 'whale-insider', track: ['perps'], intel: 'Wallet terbesar dari 4 wallet insider (58.49 BTC). Short 148.49 BTC tepat sebelum BTC turun di bawah $84K (7 Okt 2026).' }
     ];
 
-    var TRACKED_PERP_COINS = ['BTC', 'ETH', 'SOL', 'STRK', 'W', 'DOGE', 'XRP', 'ENA', 'ZRO', 'ZEC', 'TRX', 'VVV', 'AAVE', 'UNI', 'PUMP', 'ASTER', 'PAXG', 'NEAR', 'XMR'];
+    var TRACKED_PERP_COINS = ['BTC', 'ETH', 'SOL', 'STRK', 'W', 'DOGE', 'XRP', 'ENA', 'ZRO', 'ZEC', 'TRX', 'VVV', 'AAVE', 'UNI', 'PUMP', 'ASTER', 'PAXG', 'NEAR', 'XMR', 'ANT', 'BNB'];
 
     var KNOWN_MAP = {};
     BANDAR_WALLETS.forEach(function (w) { KNOWN_MAP[w.address] = w; });
