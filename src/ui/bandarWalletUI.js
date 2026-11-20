@@ -1,6 +1,6 @@
 /* src/ui/bandarWalletUI.js — Modal "Pergerakan Wallet Bandar".
  *
- * Menampilkan 18 wallet bandar BTC terpantau (data dari /api/bandar-wallets,
+ * Menampilkan 19 wallet bandar BTC terpantau (data dari /api/bandar-wallets,
  * diisi cron bandar-check tiap 10 menit):
  *  - ringkasan: total BTC terpantau, jumlah wallet, ambang alert, update terakhir
  *  - tabel wallet: label, alamat, saldo, arus IN/OUT, pergerakan terakhir
@@ -235,7 +235,7 @@
     // cuma diperbarui tiap 10 menit, walau modal sudah poll tiap 60 detik.
     // Supaya perps benar-benar bergerak realtime, selagi modal terbuka kita
     // poll Hyperliquid clearinghouseState LANGSUNG dari browser tiap 15
-    // detik (1 request per wallet, 18 wallet) dan patch sel perps di tempat
+    // detik (1 request per wallet, 19 wallet) dan patch sel perps di tempat
     // tanpa render ulang — scroll tidak loncat. Sisi BTC + alert + total
     // tetap ikut snapshot 10 menit (saldo BTC bergerak lambat, dan mempool
     // per alamat jauh lebih berat: 19 wallet x 2 request).
