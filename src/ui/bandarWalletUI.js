@@ -235,7 +235,7 @@
     // cuma diperbarui tiap 10 menit, walau modal sudah poll tiap 60 detik.
     // Supaya perps benar-benar bergerak realtime, selagi modal terbuka kita
     // poll Hyperliquid clearinghouseState LANGSUNG dari browser tiap 15
-    // detik (1 request per wallet, 12 wallet) dan patch sel perps di tempat
+    // detik (1 request per wallet, 18 wallet) dan patch sel perps di tempat
     // tanpa render ulang — scroll tidak loncat. Sisi BTC + alert + total
     // tetap ikut snapshot 10 menit (saldo BTC bergerak lambat, dan mempool
     // per alamat jauh lebih berat: 19 wallet x 2 request).
@@ -244,7 +244,7 @@
     var HL_INFO = 'https://api.hyperliquid.xyz/info';
     var LIVE_INTERVAL_MS = 15000;
     var LIVE_TIMEOUT_MS = 10000;
-    var LIVE_COINS = ['HYPE', 'BTC', 'ETH', 'SOL', 'STRK', 'W', 'DOGE', 'XRP', 'ENA', 'ZRO', 'ZEC', 'TRX', 'VVV', 'AAVE', 'UNI', 'PUMP', 'ASTER', 'PAXG', 'NEAR', 'XMR'];
+    var LIVE_COINS = ['HYPE', 'BTC', 'ETH', 'SOL', 'STRK', 'W', 'DOGE', 'XRP', 'ENA', 'ZRO', 'ZEC', 'TRX', 'VVV', 'AAVE', 'UNI', 'PUMP', 'ASTER', 'PAXG', 'NEAR', 'XMR', 'ANT', 'BNB', 'OP', 'CFX', 'WLD', 'kSHIB', 'DOT', 'FET', 'IMX', 'kBONK', 'GRASS', 'AVNT', 'GRAM', 'kPEPE', 'HBAR', 'FARTCOIN', 'TRUMP', 'XPL']; // 38 koin (20 Nov 2026: +ANT/BNB +16 koin fade wallet) — tanpa ini sel koin baru di modal hanya refresh tiap 10 mnt via snapshot, bukan tiap 15 dtk
     var live = { timer: null, statusTimer: null, running: false, lastOk: null, failStreak: 0 };
 
     function hlClearinghouse(user) {
